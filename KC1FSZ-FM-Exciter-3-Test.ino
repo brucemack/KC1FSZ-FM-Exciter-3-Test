@@ -25,29 +25,42 @@ long centerF = 10700000L;
 // FM deviation (Hz)
 double devF = 5000; 
 
-unsigned long audioMasterFreq = 4096L;
+unsigned long sampleFreq = 8192L;
 // The number of microseconds between baseband samples
-unsigned long audioMasterIntervalUs = 1000000L/ audioMasterFreq;
-unsigned long audioLastSampleUs = 0;
-unsigned long audioPhaseAccumulator = 0;
-unsigned long audioSkipCounter = 0;
-unsigned long audioLastSkipLength = 0; 
+unsigned long sampleIntervalUs = 1000000L/ sampleFreq;
+unsigned long sampleLastUs = 0;
+unsigned long samplePhaseAccumulator = 0;
+unsigned long sampleSkipCounter = 0;
+unsigned long sampleLastSkipLength = 0;
+ 
 // The desired baseband tone
-double toneFreq = 500;
+unsigned long toneFreq = 500;
 // The amount that the phase moves in each sample
-double tonePhaseIncrement = (2.0 * 3.1415926 * toneFreq) / (double)audioMasterFreq;
+double tonePhaseIncrement = (2.0 * 3.1415926 * toneFreq) / (double)sampleFreq;
 
 unsigned long maintIntervalMs = 5000;
 unsigned long maintLastMs = 0;
+
+const double master = 75000000L;
+const double range = 268435456; // 2^28
 
 void clkStrobeAD9834() {
   digitalWrite(PIN_AD9834_SCLK,0);
   digitalWrite(PIN_AD9834_SCLK,1);
 }
 
+void resetStrobeAD9834() {
+  digitalWrite(PIN_AD9834_RESET,1);
+  digitalWrite(PIN_AD9834_RESET,0);
+}
+
 void writeBitAD9834(bool bit) {
     digitalWrite(PIN_AD9834_SDATA,(bit) ? 1 : 0);
     clkStrobeAD9834();
+}
+
+void setAD9834FSYNC(bool b) {
+    digitalWrite(PIN_AD9834_FSYNC,(b) ? 1 : 0);  
 }
 
 // This function writes a complete 16-bit word into the AD9834,
@@ -60,10 +73,6 @@ void writeAD9834(unsigned int w) {
     // Rotate to the left one to expose the next least significant bit
     w = w << 1;
   }
-}
-
-void setAD9834FSYNC(bool b) {
-    digitalWrite(PIN_AD9834_FSYNC,(b) ? 1 : 0);  
 }
 
 void writeAD9834PHASE(int reg,unsigned long p) {
@@ -162,11 +171,9 @@ void writeAD9834Control(int resetFlag) {
 
 void setFreq(int reg,unsigned long freqHz) {
   // Do the math to compute the register value
-  double master = 75000000L;
-  double range = 268435456;
   double freqReg = (double)freqHz * (range / master);
-  Serial.print("Setting FREQ0: ");
-  Serial.print(freqReg);
+  //Serial.print("Setting FREQ0: ");
+  //Serial.print(freqReg);
   writeAD9834FREQ28(reg,(unsigned long)freqReg);
 }
 
@@ -177,32 +184,33 @@ void flash() {
   delay(250);  
 }
 
-void doAudio() {
-  audioPhaseAccumulator = (audioPhaseAccumulator + 1) & 0b111111111111;
-  double tonePhase = (double)audioPhaseAccumulator * tonePhaseIncrement;
+void doSample() {
+  samplePhaseAccumulator = (samplePhaseAccumulator + 1) & 0b111111111111;
+  double tonePhase = (double)samplePhaseAccumulator * tonePhaseIncrement;
   double toneAmp = cos(tonePhase);
-  double deltaF = toneAmp * devF;
-  setFreq(0,(unsigned long)(centerF + (long)deltaF));
+  double deltaF = toneAmp * (double)devF;
+  double targetF = (double)centerF + deltaF;
+  setFreq(0,(unsigned long)targetF);
 }
 
-void pollAudio() {
-  long u = micros();
-  if (u < audioLastSampleUs || u > (audioLastSampleUs + audioMasterIntervalUs)) {
-    audioLastSampleUs = u;
-    audioLastSkipLength = audioSkipCounter;
-    audioSkipCounter = 0;
-    doAudio();
+void pollSample() {
+  unsigned long u = micros();
+  if (u < sampleLastUs || u > (sampleLastUs + sampleIntervalUs)) {
+    sampleLastUs = u;
+    sampleLastSkipLength = sampleSkipCounter;
+    sampleSkipCounter = 0;
+    doSample();
   } else {
-    audioSkipCounter++;
+    sampleSkipCounter++;
   }
 }
 
 void doMaint() {
-  Serial.println(audioLastSkipLength);
+  Serial.println(sampleLastSkipLength);
 }
 
 void pollMaint() {
-  long m = millis();
+  unsigned long m = millis();
   if (m < maintLastMs || m > (maintLastMs + maintIntervalMs)) {
     maintLastMs = m;
     doMaint();
@@ -237,14 +245,12 @@ void setup() {
   // Boost up drive strength
   //si5351.drive_strength(SI5351_CLK0,SI5351_DRIVE_8MA);
 
-  // Strobe reset pin
-  digitalWrite(PIN_AD9834_RESET,1);
-  digitalWrite(PIN_AD9834_RESET,0);
+  resetStrobeAD9834();
 
   // Set RESET off
   writeAD9834Control(0);
-  writeAD9834FREQ28(0,0);
-  writeAD9834PHASE(0,0);
+  //writeAD9834FREQ28(0,0);
+  //writeAD9834PHASE(0,0);
   // Setup a test frequency (very low)
   //writeAD9834FREQ28(0,0xfffff);  
   // Set RESET off, start things going
@@ -253,7 +259,7 @@ void setup() {
 }
 
 void loop() {
-  pollAudio();
+  pollSample();
   pollMaint();
 }
 
