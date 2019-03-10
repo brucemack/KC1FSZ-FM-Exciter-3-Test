@@ -29,7 +29,6 @@ void clkStrobeAD9834() {
 }
 
 void writeBitAD9834(bool bit) {
-    Serial.println(bit);
     digitalWrite(PIN_AD9834_SDATA,(bit) ? 1 : 0);
     clkStrobeAD9834();
 }
@@ -47,8 +46,6 @@ void writeAD9834(unsigned int w) {
 }
 
 void setAD9834FSYNC(bool b) {
-  Serial.print("FSYNC ");
-  Serial.println(b);
     digitalWrite(PIN_AD9834_FSYNC,(b) ? 1 : 0);  
 }
 
@@ -76,7 +73,7 @@ void writeAD9834PHASE(int reg,unsigned long p) {
   setAD9834FSYNC(true);  
 }
 
-void writeAD9834FREQ(int reg,unsigned long f) {
+void writeAD9834FREQ28(int reg,unsigned long f) {
 
   unsigned long out = 0;
   unsigned long registerAddress = 0;
@@ -146,6 +143,16 @@ void writeAD9834Control(int resetFlag) {
   setAD9834FSYNC(true);
 }
 
+void setFreq(int reg,unsigned long freqHz) {
+  // Do the math to compute the register value
+  double master = 75000000L;
+  double range = 268435456;
+  double freqReg = (double)freqHz * (range / master);
+  Serial.print("Setting FREQ0: ");
+  Serial.print(freqReg);
+  writeAD9834FREQ28(reg,(unsigned long)freqReg);
+}
+
 void flash() {
   digitalWrite(PIN_LED13,1);  
   delay(250);
@@ -187,18 +194,19 @@ void setup() {
   // AD9834 self-test
   //delay(1000);
 
-  // Strobe reset
+  // Strobe reset pin
   digitalWrite(PIN_AD9834_RESET,1);
   digitalWrite(PIN_AD9834_RESET,0);
 
   // Set RESET off
   writeAD9834Control(0);
-  writeAD9834FREQ(0,0);
+  writeAD9834FREQ28(0,0);
   //writeAD9834PHASE(0,0);
   // Setup a test frequency (very low)
-  writeAD9834FREQ(0,0xfffff);  
+  //writeAD9834FREQ28(0,0xfffff);  
   // Set RESET off, start things going
   //writeAD9834Control(0);
+  setFreq(0,10700000);
 }
 
 int count = 0;
