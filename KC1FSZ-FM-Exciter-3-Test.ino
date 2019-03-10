@@ -24,14 +24,15 @@
 long centerF = 10700000L;
 // FM deviation (Hz)
 double devF = 5000; 
+long lastF = 0;
 
 unsigned long sampleFreq = 8192L;
 // The number of microseconds between baseband samples
 unsigned long sampleIntervalUs = 1000000L/ sampleFreq;
-unsigned long sampleLastUs = 0;
 unsigned long samplePhaseAccumulator = 0;
-unsigned long sampleSkipCounter = 0;
 unsigned long sampleLastSkipLength = 0;
+unsigned long lastStamp = 0;
+unsigned long lastInterval = 0;
  
 // The desired baseband tone
 unsigned long toneFreq = 500;
@@ -172,9 +173,8 @@ void writeAD9834Control(int resetFlag) {
 void setFreq(int reg,unsigned long freqHz) {
   // Do the math to compute the register value
   double freqReg = (double)freqHz * (range / master);
-  //Serial.print("Setting FREQ0: ");
-  //Serial.print(freqReg);
   writeAD9834FREQ28(reg,(unsigned long)freqReg);
+  lastF = (unsigned long)freqReg;
 }
 
 void flash() {
@@ -184,29 +184,27 @@ void flash() {
   delay(250);  
 }
 
+IntervalTimer timer0;
+
 void doSample() {
+
+  long startUs = micros();
+  lastInterval = startUs - lastStamp;
+  lastStamp = startUs;
+
   samplePhaseAccumulator = (samplePhaseAccumulator + 1) & 0b111111111111;
   double tonePhase = (double)samplePhaseAccumulator * tonePhaseIncrement;
   double toneAmp = cos(tonePhase);
   double deltaF = toneAmp * (double)devF;
   double targetF = (double)centerF + deltaF;
   setFreq(0,(unsigned long)targetF);
-}
-
-void pollSample() {
-  unsigned long u = micros();
-  if (u < sampleLastUs || u > (sampleLastUs + sampleIntervalUs)) {
-    sampleLastUs = u;
-    sampleLastSkipLength = sampleSkipCounter;
-    sampleSkipCounter = 0;
-    doSample();
-  } else {
-    sampleSkipCounter++;
-  }
+  sampleLastSkipLength = micros() - startUs;
 }
 
 void doMaint() {
-  Serial.println(sampleLastSkipLength);
+  Serial.print(sampleLastSkipLength);
+  Serial.print(" ");
+  Serial.println(lastF);
 }
 
 void pollMaint() {
@@ -256,10 +254,12 @@ void setup() {
   // Set RESET off, start things going
   //writeAD9834Control(0);
   //setFreq(0,10700000);
+
+  timer0.begin(doSample,sampleIntervalUs);
 }
 
 void loop() {
-  pollSample();
+  //pollSample();
   pollMaint();
 }
 
