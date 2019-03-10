@@ -24,11 +24,12 @@
 unsigned long vfo = 0;
 
 void clkStrobeAD9834() {
-  digitalWrite(PIN_AD9834_SCLK,1);
   digitalWrite(PIN_AD9834_SCLK,0);
+  digitalWrite(PIN_AD9834_SCLK,1);
 }
 
 void writeBitAD9834(bool bit) {
+    Serial.println(bit);
     digitalWrite(PIN_AD9834_SDATA,(bit) ? 1 : 0);
     clkStrobeAD9834();
 }
@@ -46,6 +47,8 @@ void writeAD9834(unsigned int w) {
 }
 
 void setAD9834FSYNC(bool b) {
+  Serial.print("FSYNC ");
+  Serial.println(b);
     digitalWrite(PIN_AD9834_FSYNC,(b) ? 1 : 0);  
 }
 
@@ -138,7 +141,9 @@ void writeAD9834Control(int resetFlag) {
   a = 0b0; // [Reserved=0]
   out |= a;
   
+  setAD9834FSYNC(false);
   writeAD9834(out);
+  setAD9834FSYNC(true);
 }
 
 void flash() {
@@ -161,7 +166,7 @@ void setup() {
   pinMode(PIN_AD9834_SIGN_BIT_OUT,INPUT);
 
   digitalWrite(PIN_LED13,0);
-  digitalWrite(PIN_AD9834_SCLK,0);
+  digitalWrite(PIN_AD9834_SCLK,1);
   digitalWrite(PIN_AD9834_SDATA,0);
   digitalWrite(PIN_AD9834_FSYNC,1);
   digitalWrite(PIN_AD9834_RESET,0);
@@ -172,6 +177,7 @@ void setup() {
   
   Serial.begin(9600);
   Serial.println("KC1FSZ FM Exciter Controller 3");
+  delay(1000);
 
   // Si5351 initialization
   //si5351.init(SI5351_CRYSTAL_LOAD_8PF,0,0);
@@ -181,14 +187,18 @@ void setup() {
   // AD9834 self-test
   //delay(1000);
 
-  // Set RESET on
-  writeAD9834Control(1);
-  writeAD9834FREQ(0,0);
-  writeAD9834PHASE(0,0);
-  // Setup a test frequency (very low)
-  writeAD9834FREQ(0,1);  
-  // Set RESET off, start things going
+  // Strobe reset
+  digitalWrite(PIN_AD9834_RESET,1);
+  digitalWrite(PIN_AD9834_RESET,0);
+
+  // Set RESET off
   writeAD9834Control(0);
+  writeAD9834FREQ(0,0);
+  //writeAD9834PHASE(0,0);
+  // Setup a test frequency (very low)
+  writeAD9834FREQ(0,0xfffff);  
+  // Set RESET off, start things going
+  //writeAD9834Control(0);
 }
 
 int count = 0;
