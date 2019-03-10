@@ -21,7 +21,24 @@
 //Si5351 si5351;
 
 // Desired center frequency
-unsigned long vfo = 0;
+long centerF = 10700000L;
+// FM deviation (Hz)
+double devF = 5000; 
+
+unsigned long audioMasterFreq = 4096L;
+// The number of microseconds between baseband samples
+unsigned long audioMasterIntervalUs = 1000000L/ audioMasterFreq;
+unsigned long audioLastSampleUs = 0;
+unsigned long audioPhaseAccumulator = 0;
+unsigned long audioSkipCounter = 0;
+unsigned long audioLastSkipLength = 0; 
+// The desired baseband tone
+double toneFreq = 500;
+// The amount that the phase moves in each sample
+double tonePhaseIncrement = (2.0 * 3.1415926 * toneFreq) / (double)audioMasterFreq;
+
+unsigned long maintIntervalMs = 5000;
+unsigned long maintLastMs = 0;
 
 void clkStrobeAD9834() {
   digitalWrite(PIN_AD9834_SCLK,0);
@@ -160,11 +177,40 @@ void flash() {
   delay(250);  
 }
 
-long lastMaintStamp = millis();
-long maintInterval = 5000;
+void doAudio() {
+  audioPhaseAccumulator = (audioPhaseAccumulator + 1) & 0b111111111111;
+  double tonePhase = (double)audioPhaseAccumulator * tonePhaseIncrement;
+  double toneAmp = cos(tonePhase);
+  double deltaF = toneAmp * devF;
+  setFreq(0,(unsigned long)(centerF + (long)deltaF));
+}
+
+void pollAudio() {
+  long u = micros();
+  if (u < audioLastSampleUs || u > (audioLastSampleUs + audioMasterIntervalUs)) {
+    audioLastSampleUs = u;
+    audioLastSkipLength = audioSkipCounter;
+    audioSkipCounter = 0;
+    doAudio();
+  } else {
+    audioSkipCounter++;
+  }
+}
+
+void doMaint() {
+  Serial.println(audioLastSkipLength);
+}
+
+void pollMaint() {
+  long m = millis();
+  if (m < maintLastMs || m > (maintLastMs + maintIntervalMs)) {
+    maintLastMs = m;
+    doMaint();
+  }
+}
 
 void setup() {
-
+  
   pinMode(PIN_LED13,OUTPUT);
   pinMode(PIN_AD9834_SCLK,OUTPUT);
   pinMode(PIN_AD9834_SDATA,OUTPUT);
@@ -184,15 +230,12 @@ void setup() {
   
   Serial.begin(9600);
   Serial.println("KC1FSZ FM Exciter Controller 3");
-  delay(1000);
+  delay(100);
 
   // Si5351 initialization
   //si5351.init(SI5351_CRYSTAL_LOAD_8PF,0,0);
   // Boost up drive strength
   //si5351.drive_strength(SI5351_CLK0,SI5351_DRIVE_8MA);
-
-  // AD9834 self-test
-  //delay(1000);
 
   // Strobe reset pin
   digitalWrite(PIN_AD9834_RESET,1);
@@ -201,30 +244,16 @@ void setup() {
   // Set RESET off
   writeAD9834Control(0);
   writeAD9834FREQ28(0,0);
-  //writeAD9834PHASE(0,0);
+  writeAD9834PHASE(0,0);
   // Setup a test frequency (very low)
   //writeAD9834FREQ28(0,0xfffff);  
   // Set RESET off, start things going
   //writeAD9834Control(0);
-  setFreq(0,10700000);
+  //setFreq(0,10700000);
 }
 
-int count = 0;
-
 void loop() {
-  /*
-  // Periodic maintenance like displays, etc.
-  long ms = millis();
-  if (ms < lastMaintStamp || (ms - lastMaintStamp) > maintInterval) {  
-    lastMaintStamp = ms;  
-    // Alernate the frequency between two values
-    if (count % 2 == 0) {
-      writeAD9834FREQ(0,1);  
-    } else {
-      writeAD9834FREQ(0,2);  
-    }
-    count++;
-  }
-  */
+  pollAudio();
+  pollMaint();
 }
 
