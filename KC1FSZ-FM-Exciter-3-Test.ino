@@ -4,6 +4,7 @@
 //
 #include <SPI.h>
 #include <Wire.h>
+//#include <digitalWriteFast.h>
 
 // The Etherkit library
 //#include <si5351.h>
@@ -13,6 +14,7 @@
 #define PIN_AD9834_FSYNC 4
 #define PIN_AD9834_RESET 5
 #define PIN_AD9834_SIGN_BIT_OUT 6
+
 #define PIN_LED13 13 
 #define MASK_LSB12 0b0000111111111111
 #define MASK_LSB14 0b0011111111111111
@@ -45,24 +47,68 @@ unsigned long maintLastMs = 0;
 const double master = 75000000L;
 const double range = 268435456; // 2^28
 
-void clkStrobeAD9834() {
-  digitalWrite(PIN_AD9834_SCLK,0);
-  digitalWrite(PIN_AD9834_SCLK,1);
+// ----- I/O functions --------------------------------------------------
+
+void setupAD9834Pins() {  
+  pinMode(PIN_AD9834_SCLK,OUTPUT);          // 2
+  pinMode(PIN_AD9834_SDATA,OUTPUT);         // 3
+  pinMode(PIN_AD9834_FSYNC,OUTPUT);         // 4 
+  pinMode(PIN_AD9834_RESET,OUTPUT);         // 5
+  pinMode(PIN_AD9834_SIGN_BIT_OUT,INPUT);   // 6
+  digitalWrite(PIN_AD9834_SCLK,1);  // 2
+  digitalWrite(PIN_AD9834_SDATA,0); // 3
+  digitalWrite(PIN_AD9834_FSYNC,1); // 4
+  digitalWrite(PIN_AD9834_RESET,0); // 5
 }
 
-void resetStrobeAD9834() {
-  digitalWrite(PIN_AD9834_RESET,1);
-  digitalWrite(PIN_AD9834_RESET,0);
+// PIN 2 = PTD0
+void clkStrobeAD9834() {
+  digitalWriteFast(2,0);
+  digitalWriteFast(2,1);
 }
+
+//void clkStrobeAD9834() {
+//  digitalWrite(PIN_AD9834_SCLK,0);  // 2
+//  digitalWrite(PIN_AD9834_SCLK,1);
+//}
+
+// PIN 5 = PTD7
+void resetStrobeAD9834() {
+  digitalWriteFast(5,1);
+  digitalWriteFast(5,0);
+}
+
+//void resetStrobeAD9834() {
+//  digitalWrite(PIN_AD9834_RESET,1); // 5
+//  digitalWrite(PIN_AD9834_RESET,0);
+//}
 
 void writeBitAD9834(bool bit) {
-    digitalWrite(PIN_AD9834_SDATA,(bit) ? 1 : 0);
-    clkStrobeAD9834();
+  if (bit) {
+    digitalWriteFast(3,1);
+  } else {
+    digitalWriteFast(3,0);
+  }
+  clkStrobeAD9834();
 }
 
-void setAD9834FSYNC(bool b) {
-    digitalWrite(PIN_AD9834_FSYNC,(b) ? 1 : 0);  
+//void writeBitAD9834(bool bit) {
+//  digitalWrite(PIN_AD9834_SDATA,(bit) ? 1 : 0); // 3
+//  clkStrobeAD9834();
+//}
+
+// PIN 4 = PTA13
+void setAD9834FSYNC(bool bit) {
+  if (bit) {
+    digitalWriteFast(4,1);
+  } else {
+    digitalWriteFast(4,0);
+  }
 }
+
+//void setAD9834FSYNC(bool b) {
+//  digitalWrite(PIN_AD9834_FSYNC,(b) ? 1 : 0);  // 4
+//}
 
 // This function writes a complete 16-bit word into the AD9834,
 // MSB first!
@@ -197,6 +243,7 @@ void doSample() {
   double toneAmp = cos(tonePhase);
   double deltaF = toneAmp * (double)devF;
   double targetF = (double)centerF + deltaF;
+  targetF = 10700000.0;
   setFreq(0,(unsigned long)targetF);
   sampleLastSkipLength = micros() - startUs;
 }
@@ -218,17 +265,9 @@ void pollMaint() {
 void setup() {
   
   pinMode(PIN_LED13,OUTPUT);
-  pinMode(PIN_AD9834_SCLK,OUTPUT);
-  pinMode(PIN_AD9834_SDATA,OUTPUT);
-  pinMode(PIN_AD9834_FSYNC,OUTPUT);
-  pinMode(PIN_AD9834_RESET,OUTPUT);
-  pinMode(PIN_AD9834_SIGN_BIT_OUT,INPUT);
-
   digitalWrite(PIN_LED13,0);
-  digitalWrite(PIN_AD9834_SCLK,1);
-  digitalWrite(PIN_AD9834_SDATA,0);
-  digitalWrite(PIN_AD9834_FSYNC,1);
-  digitalWrite(PIN_AD9834_RESET,0);
+
+  setupAD9834Pins();
 
   // Hello world check
   flash();
@@ -253,13 +292,12 @@ void setup() {
   //writeAD9834FREQ28(0,0xfffff);  
   // Set RESET off, start things going
   //writeAD9834Control(0);
-  //setFreq(0,10700000);
+  setFreq(0,10700000);
 
-  timer0.begin(doSample,sampleIntervalUs);
+  //timer0.begin(doSample,sampleIntervalUs);
 }
 
 void loop() {
   //pollSample();
   pollMaint();
 }
-
